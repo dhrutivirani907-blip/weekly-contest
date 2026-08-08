@@ -1,0 +1,32 @@
+[
+    {
+        "tier":1,
+        "task":1,
+        "target":100,
+        "reward":5
+    },
+    {
+        "tier":1,
+        "task":2,
+        "target":200,
+        "reward":10
+    },
+    {
+        "tier":1,
+        "task":3,
+        "target":300,
+        "reward":15
+    },
+    {
+        "tier":1,
+        "task":4,
+        "target":400,
+        "reward":20
+    },
+    {
+        "tier":1,
+        "task":5,
+        "target":500,
+        "reward":25
+    }
+]
