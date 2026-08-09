@@ -66,6 +66,9 @@ if (existingUser) {
 
     writeJSON(usersFile,users);
 
+    console.log("USER SAVED:", newUser.userId);
+console.log("TOTAL USERS:", users.length);
+
     res.json({
 
         success:true,
