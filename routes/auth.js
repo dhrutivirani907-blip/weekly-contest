@@ -10,6 +10,8 @@ const usersFile = path.join(__dirname,"../data/users.json");
 
 router.post("/register",(req,res)=>{
 
+    console.log("REGISTER REQUEST RECEIVED:", req.body);
+
     const { deviceId } = req.body;
 
     if (!deviceId) {
