@@ -1,14 +1,16 @@
 const express = require("express");
-const path = require("path");
 
 const router = express.Router();
 
 const generateUserId = require("../utils/userId");
-const { readJSON, writeJSON } = require("../utils/database");
+const pool = require("../utils/postgres");
 
-const usersFile = path.join(__dirname,"../data/users.json");
 
-router.post("/register",(req,res)=>{
+// =====================================
+// Register User
+// =====================================
+
+router.post("/register", async (req, res) => {
 
     console.log("REGISTER REQUEST RECEIVED:", req.body);
 
@@ -16,67 +18,145 @@ router.post("/register",(req,res)=>{
 
     if (!deviceId) {
 
-    return res.status(400).json({
+        return res.status(400).json({
 
-        success: false,
+            success: false,
+            message: "Device ID missing"
 
-        message: "Device ID missing"
+        });
 
-    });
+    }
 
-}
+    try {
 
-    const users = readJSON(usersFile);
+        // =====================================
+        // Check Existing Device
+        // =====================================
 
-    const existingUser = users.find(u => u.deviceId === deviceId);
+        const existingUser = await pool.query(
+            `
+            SELECT
+                user_id AS "userId",
+                device_id AS "deviceId",
+                ad_count AS "adCount",
+                captcha_count AS "captchaCount",
+                balance,
+                claimed_tasks AS "claimedTasks",
+                created_at AS "createdAt"
+            FROM users
+            WHERE device_id = $1
+            LIMIT 1
+            `,
+            [deviceId]
+        );
 
-if (existingUser) {
 
-    return res.json({
+        if (existingUser.rows.length > 0) {
 
-        success: true,
+            console.log(
+                "EXISTING USER:",
+                existingUser.rows[0].userId
+            );
 
-        user: existingUser
+            return res.json({
 
-    });
+                success: true,
 
-}
+                user: existingUser.rows[0]
 
-    const userId = generateUserId();
+            });
 
-    const newUser={
+        }
 
-        userId,
 
-        deviceId,
+        // =====================================
+        // Create New User
+        // =====================================
 
-        adCount: 0,
+        const userId = generateUserId();
 
-        captchaCount:0,
+        const newUser = {
 
-        balance:0,
+            userId: userId,
 
-        claimedTasks:[],
+            deviceId: deviceId,
 
-        createdAt:new Date().toISOString()
+            adCount: 0,
 
-    };
+            captchaCount: 0,
 
-    users.push(newUser);
+            balance: 0,
 
-    writeJSON(usersFile,users);
+            claimedTasks: [],
 
-    console.log("USER SAVED:", newUser.userId);
-console.log("TOTAL USERS:", users.length);
+            createdAt: new Date().toISOString()
 
-    res.json({
+        };
 
-        success:true,
 
-        user:newUser
+        // =====================================
+        // Save to PostgreSQL
+        // =====================================
 
-    });
+        await pool.query(
+            `
+            INSERT INTO users
+            (
+                user_id,
+                device_id,
+                ad_count,
+                captcha_count,
+                balance,
+                claimed_tasks,
+                created_at
+            )
+            VALUES
+            ($1, $2, $3, $4, $5, $6, $7)
+            `,
+            [
+                newUser.userId,
+                newUser.deviceId,
+                newUser.adCount,
+                newUser.captchaCount,
+                newUser.balance,
+                JSON.stringify(newUser.claimedTasks),
+                newUser.createdAt
+            ]
+        );
+
+
+        console.log("USER SAVED:", newUser.userId);
+
+
+        // =====================================
+        // Response
+        // =====================================
+
+        return res.json({
+
+            success: true,
+
+            user: newUser
+
+        });
+
+    }
+
+    catch (error) {
+
+        console.error("REGISTER ERROR:", error);
+
+        return res.status(500).json({
+
+            success: false,
+
+            message: "Server Error"
+
+        });
+
+    }
 
 });
 
-module.exports=router;
+
+module.exports = router;

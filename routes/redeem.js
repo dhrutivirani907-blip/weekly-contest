@@ -1,31 +1,26 @@
 const express = require("express");
-const path = require("path");
-
 const router = express.Router();
 
-const { readJSON, writeJSON } = require("../utils/database");
-
-const usersFile = path.join(__dirname, "../data/users.json");
-const redeemFile = path.join(__dirname, "../data/redeem.json");
+const pool = require("../utils/postgres");
 
 // =====================================
 // Settings
 // =====================================
 
-// Binance
 const BINANCE_MIN_WITHDRAW = 1000000;
 const BINANCE_FEE = 0;
 
-// BEP20
 const BEP20_MIN_WITHDRAW = 70000000;
 const BEP20_FEE = 10000000;
 
 
 // =====================================
-// Create Redeem Request
+// Create Withdrawal Request
 // =====================================
 
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
+
+    const client = await pool.connect();
 
     try {
 
@@ -53,27 +48,23 @@ router.post("/", (req, res) => {
 
 
         // =====================================
-        // Detect Redeem Type
+        // Detect Withdrawal Type
         // =====================================
 
         const isBinance = wallet.startsWith("BINANCE UID :");
-
 
         let minWithdraw;
         let withdrawFee;
         let redeemType;
 
-
         if (isBinance) {
 
-            // Binance
             minWithdraw = BINANCE_MIN_WITHDRAW;
             withdrawFee = BINANCE_FEE;
             redeemType = "Binance";
 
         } else {
 
-            // BEP20
             minWithdraw = BEP20_MIN_WITHDRAW;
             withdrawFee = BEP20_FEE;
             redeemType = "BEP20";
@@ -82,7 +73,7 @@ router.post("/", (req, res) => {
 
 
         // =====================================
-        // Minimum Withdrawal Check
+        // Minimum Withdrawal
         // =====================================
 
         if (withdrawAmount < minWithdraw) {
@@ -103,30 +94,38 @@ router.post("/", (req, res) => {
         }
 
 
-        // =====================================
-        // Total Deduction
-        // =====================================
-
         const totalDeduct = withdrawAmount + withdrawFee;
 
 
         // =====================================
-        // Read Users
+        // Transaction Start
         // =====================================
 
-        const users = readJSON(usersFile);
+        await client.query("BEGIN");
 
-        const user = users.find(
-            u => u.userId === userId
+
+        // =====================================
+        // Get User
+        // =====================================
+
+        const userResult = await client.query(
+            `
+            SELECT *
+            FROM users
+            WHERE user_id = $1
+            FOR UPDATE
+            `,
+            [String(userId).trim()]
         );
 
 
-        if (!user) {
+        if (userResult.rows.length === 0) {
+
+            await client.query("ROLLBACK");
 
             return res.status(404).json({
 
                 success: false,
-
                 message: "User not found."
 
             });
@@ -134,16 +133,22 @@ router.post("/", (req, res) => {
         }
 
 
+        const user = userResult.rows[0];
+
+        const currentBalance = Number(user.balance || 0);
+
+
         // =====================================
         // Balance Check
         // =====================================
 
-        if ((user.balance || 0) < totalDeduct) {
+        if (currentBalance < totalDeduct) {
+
+            await client.query("ROLLBACK");
 
             return res.status(400).json({
 
                 success: false,
-
                 message: "Insufficient balance."
 
             });
@@ -152,50 +157,73 @@ router.post("/", (req, res) => {
 
 
         // =====================================
-        // Balance Cut
+        // Deduct Balance
         // =====================================
 
-        user.balance -= totalDeduct;
+        const newBalance = currentBalance - totalDeduct;
 
-        writeJSON(usersFile, users);
-
-
-        // =====================================
-        // Save Redeem Request
-        // =====================================
-
-        const redeem = readJSON(redeemFile);
-
-
-        redeem.push({
-
-            id: Date.now(),
-
-            userId: userId,
-
-            type: redeemType,
-
-            wallet: wallet,
-
-            amount: withdrawAmount,
-
-            fee: withdrawFee,
-
-            totalDeduct: totalDeduct,
-
-            status: "Pending",
-
-            date: new Date().toISOString()
-
-        });
-
-
-        writeJSON(redeemFile, redeem);
+        await client.query(
+            `
+            UPDATE users
+            SET balance = $1
+            WHERE user_id = $2
+            `,
+            [
+                newBalance,
+                String(userId).trim()
+            ]
+        );
 
 
         // =====================================
-        // Success Response
+        // Generate Withdrawal ID
         // =====================================
+
+        const withdrawalId =
+            Date.now() * 1000 +
+            Math.floor(Math.random() * 1000);
+
+
+        // =====================================
+        // Save Withdrawal
+        // =====================================
+
+        await client.query(
+            `
+            INSERT INTO withdrawals
+            (
+                id,
+                user_id,
+                type,
+                wallet,
+                amount,
+                fee,
+                total_deduct,
+                status,
+                date
+            )
+            VALUES
+            ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+            `,
+            [
+                withdrawalId,
+                String(userId).trim(),
+                redeemType,
+                wallet,
+                withdrawAmount,
+                withdrawFee,
+                totalDeduct,
+                "Pending"
+            ]
+        );
+
+
+        // =====================================
+        // Commit
+        // =====================================
+
+        await client.query("COMMIT");
+
 
         return res.json({
 
@@ -205,6 +233,8 @@ router.post("/", (req, res) => {
                 redeemType +
                 " redeem request submitted.",
 
+            id: withdrawalId,
+
             type: redeemType,
 
             amount: withdrawAmount,
@@ -213,7 +243,7 @@ router.post("/", (req, res) => {
 
             totalDeduct: totalDeduct,
 
-            balance: user.balance
+            balance: newBalance
 
         });
 
@@ -221,15 +251,22 @@ router.post("/", (req, res) => {
 
     catch (err) {
 
-        console.log(err);
+        await client.query("ROLLBACK");
+
+        console.error("Withdrawal Error:", err);
 
         return res.status(500).json({
 
             success: false,
-
             message: "Server Error"
 
         });
+
+    }
+
+    finally {
+
+        client.release();
 
     }
 
@@ -237,19 +274,32 @@ router.post("/", (req, res) => {
 
 
 // =====================================
-// Redeem History
+// Withdrawal History
 // =====================================
 
-router.get("/:userId", (req, res) => {
+router.get("/:userId", async (req, res) => {
 
     try {
 
         const { userId } = req.params;
 
-        const redeem = readJSON(redeemFile);
-
-        const history = redeem.filter(
-            item => item.userId === userId
+        const result = await pool.query(
+            `
+            SELECT
+                id,
+                user_id AS "userId",
+                type,
+                wallet,
+                amount,
+                fee,
+                total_deduct AS "totalDeduct",
+                status,
+                date
+            FROM withdrawals
+            WHERE user_id = $1
+            ORDER BY date DESC
+            `,
+            [String(userId).trim()]
         );
 
 
@@ -257,7 +307,7 @@ router.get("/:userId", (req, res) => {
 
             success: true,
 
-            history: history
+            history: result.rows
 
         });
 
@@ -265,12 +315,11 @@ router.get("/:userId", (req, res) => {
 
     catch (err) {
 
-        console.log(err);
+        console.error("Withdrawal History Error:", err);
 
         return res.status(500).json({
 
             success: false,
-
             message: "Server Error"
 
         });
