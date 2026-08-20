@@ -115,6 +115,8 @@ router.get("/users", async (req, res) => {
 
 router.get("/redeems", async (req, res) => {
 
+    console.log("🔥 REDEEMS API HIT");
+
     try {
 
         const result = await pool.query(`
