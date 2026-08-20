@@ -119,6 +119,8 @@ router.get("/redeems", async (req, res) => {
 
     try {
 
+        console.log("🔌 Testing PostgreSQL...");
+
         const result = await pool.query(`
             SELECT
                 id,
@@ -134,33 +136,29 @@ router.get("/redeems", async (req, res) => {
             ORDER BY date DESC
         `);
 
+        console.log("✅ PostgreSQL query successful");
+        console.log("📦 Rows:", result.rows.length);
+
         res.json({
-
             success: true,
-
             redeems: result.rows
-
         });
 
-    }
+    } catch (error) {
 
-    catch (error) {
-
-        console.error("Redeems Error:", error);
+        console.error("❌ REDEEMS ERROR:");
+        console.error(error);
+        console.error("MESSAGE:", error.message);
+        console.error("CODE:", error.code);
 
         res.status(500).json({
-
             success: false,
-
-            message: "Server Error"
-
+            message: error.message
         });
 
     }
 
 });
-
-
 // ===============================
 // Update Withdrawal Status
 // ===============================
