@@ -2,7 +2,7 @@ const express = require("express");
 
 const router = express.Router();
 
-const pool = require("../utils/postgres");
+const pool = require("../../../backend/utils/postgres");
 
 // ===============================
 // Dashboard Data

@@ -2,8 +2,8 @@ const express = require("express");
 
 const router = express.Router();
 
-const generateUserId = require("../utils/userId");
-const pool = require("../utils/postgres");
+const generateUserId = require("../../../backend/utils/userId");
+const pool = require("../../../backend/utils/postgres");
 
 
 // =====================================
