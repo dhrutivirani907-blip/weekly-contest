@@ -2,7 +2,7 @@ const express = require("express");
 
 const router = express.Router();
 
-const generateUserId = require("../../../backend/utils/userId");
+const generateUserId = require("../utils/userId");
 const pool = require("../../../backend/utils/postgres");
 
 
