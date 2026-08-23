@@ -2,8 +2,8 @@ const express = require("express");
 
 const router = express.Router();
 
-const pool = require("../../../backend/utils/postgres");
-const getRewardData = require("../../../backend/utils/reward");
+const pool = require("../utils/postgres");
+const getRewardData = require("../utils/reward");
 
 console.log("Reward Route Loaded");
 

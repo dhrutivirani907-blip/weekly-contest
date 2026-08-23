@@ -3,7 +3,7 @@ const path = require("path");
 
 const router = express.Router();
 
-const { readJSON, writeJSON } = require("../../../backend/utils/database");
+const { readJSON, writeJSON } = require("../utils/database");
 
 const usersFile = path.join(__dirname, "../data/users.json");
 const adLogsFile = path.join(__dirname, "../data/ad_logs.json");
