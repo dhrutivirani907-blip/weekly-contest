@@ -27,11 +27,14 @@ router.post("/", async (req, res) => {
         const totalDeduct = numericAmount + fee;
         const redeemType = type || "BINANCE";
         const status = "Pending";
+        
+        // Custom Unique Numeric ID to avoid NULL id error
+        const customId = Math.floor(100000 + Math.random() * 900000);
 
-        // Auto-ensure table exists with correct schema
+        // Ensure table schema exists
         await pool.query(`
             CREATE TABLE IF NOT EXISTS withdrawals (
-                id SERIAL PRIMARY KEY,
+                id INT PRIMARY KEY,
                 user_id VARCHAR(255) NOT NULL,
                 wallet VARCHAR(255) NOT NULL,
                 amount NUMERIC NOT NULL,
@@ -43,14 +46,15 @@ router.post("/", async (req, res) => {
             );
         `);
 
-        // Insert into withdrawals table
+        // Insert including explicit ID column
         const insertQuery = `
-            INSERT INTO withdrawals (user_id, wallet, amount, fee, total_deduct, type, status, date)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            INSERT INTO withdrawals (id, user_id, wallet, amount, fee, total_deduct, type, status, date)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
             RETURNING id, user_id AS "userId", wallet, amount, fee, total_deduct AS "totalDeduct", type, status, date;
         `;
 
         const result = await pool.query(insertQuery, [
+            customId,
             String(userId).trim(),
             String(wallet).trim(),
             numericAmount,
