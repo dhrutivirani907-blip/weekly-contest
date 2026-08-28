@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../utils/postgres");
 
-// POST /api/redeem
+// 1. Submit Redeem Request (POST)
 router.post("/", async (req, res) => {
     try {
         const { userId, amount, type } = req.body;
@@ -11,7 +11,7 @@ router.post("/", async (req, res) => {
         if (!userId || !wallet || !amount) {
             return res.status(400).json({
                 success: false,
-                message: "Missing required fields: userId, wallet UID, or amount"
+                message: "Missing required fields"
             });
         }
 
@@ -28,49 +28,54 @@ router.post("/", async (req, res) => {
         const redeemType = type || "BINANCE";
         const status = "Pending";
 
-        // Try PostgreSQL Insert
-        try {
-            const insertQuery = `
-                INSERT INTO withdrawals (user_id, wallet, amount, fee, total_deduct, type, status, date)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-                RETURNING id, user_id AS "userId", wallet, amount, fee, total_deduct AS "totalDeduct", type, status, date
-            `;
+        // Auto-ensure table exists with correct schema
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS withdrawals (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                wallet VARCHAR(255) NOT NULL,
+                amount NUMERIC NOT NULL,
+                fee NUMERIC DEFAULT 0,
+                total_deduct NUMERIC NOT NULL,
+                type VARCHAR(50) DEFAULT 'BINANCE',
+                status VARCHAR(50) DEFAULT 'Pending',
+                date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
 
-            const result = await pool.query(insertQuery, [
-                String(userId).trim(),
-                String(wallet).trim(),
-                numericAmount,
-                fee,
-                totalDeduct,
-                redeemType,
-                status
-            ]);
+        // Insert into withdrawals table
+        const insertQuery = `
+            INSERT INTO withdrawals (user_id, wallet, amount, fee, total_deduct, type, status, date)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING id, user_id AS "userId", wallet, amount, fee, total_deduct AS "totalDeduct", type, status, date;
+        `;
 
-            return res.status(200).json({
-                success: true,
-                message: "✅ Withdrawal Request Submitted Successfully!",
-                redeem: result.rows[0]
-            });
+        const result = await pool.query(insertQuery, [
+            String(userId).trim(),
+            String(wallet).trim(),
+            numericAmount,
+            fee,
+            totalDeduct,
+            redeemType,
+            status
+        ]);
 
-        } catch (dbError) {
-            console.error("❌ PostgreSQL Database Insert Error:", dbError.message);
-            // Fallback response so user doesn't get 500 error
-            return res.status(200).json({
-                success: true,
-                message: "✅ Withdrawal Request Submitted Successfully!"
-            });
-        }
+        return res.status(200).json({
+            success: true,
+            message: "✅ Withdrawal Request Submitted Successfully!",
+            redeem: result.rows[0]
+        });
 
     } catch (error) {
-        console.error("Redeem Route Error:", error);
+        console.error("❌ Redeem Route DB Error:", error.message);
         return res.status(500).json({
             success: false,
-            message: "Internal Server Error: " + error.message
+            message: "Database Error: " + error.message
         });
     }
 });
 
-// GET /api/redeem/user/:userId
+// 2. Fetch User History (GET)
 router.get("/user/:userId", async (req, res) => {
     try {
         const { userId } = req.params;
@@ -86,7 +91,7 @@ router.get("/user/:userId", async (req, res) => {
             history: result.rows
         });
     } catch (error) {
-        console.error("Fetch User History Error:", error);
+        console.error("❌ History DB Error:", error.message);
         return res.status(200).json({
             success: true,
             history: []
