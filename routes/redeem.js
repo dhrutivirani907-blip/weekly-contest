@@ -1,36 +1,13 @@
 const express = require("express");
 const router = express.Router();
-const fs = require("fs");
-const path = require("path");
-
-const redeemFile = path.join(__dirname, "../data/redeem.json");
-
-// Helper function to read redeem data safely
-function readRedeemData() {
-    if (!fs.existsSync(redeemFile)) {
-        return [];
-    }
-    try {
-        const data = fs.readFileSync(redeemFile, "utf8");
-        return JSON.parse(data || "[]");
-    } catch (err) {
-        return [];
-    }
-}
-
-// Helper function to write redeem data
-function writeRedeemData(data) {
-    fs.writeFileSync(redeemFile, JSON.stringify(data, null, 2));
-}
+const pool = require("../utils/postgres");
 
 // POST /api/redeem
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
     try {
         const { userId, amount, type } = req.body;
-        // Accept either 'wallet' or 'address' key from request
         const wallet = req.body.wallet || req.body.address;
 
-        // 1. Check Missing Fields
         if (!userId || !wallet || !amount) {
             return res.status(400).json({
                 success: false,
@@ -39,8 +16,6 @@ router.post("/", (req, res) => {
         }
 
         const numericAmount = Number(amount);
-
-        // 2. Minimum Limit Validation (Strictly 1,000,000 BABYDOGE)
         if (isNaN(numericAmount) || numericAmount < 1000000) {
             return res.status(400).json({
                 success: false,
@@ -48,33 +23,63 @@ router.post("/", (req, res) => {
             });
         }
 
-        // 3. Create New Redeem Request Record
-        const newRedeem = {
-            id: Date.now().toString(),
-            userId: String(userId).trim(),
-            wallet: String(wallet).trim(),
-            amount: numericAmount,
-            type: type || "BINANCE",
-            status: "PENDING",
-            createdAt: new Date().toISOString()
-        };
+        const fee = 0;
+        const totalDeduct = numericAmount + fee;
+        const redeemType = type || "BINANCE";
+        const status = "Pending";
 
-        // 4. Save to redeem.json
-        const redeems = readRedeemData();
-        redeems.push(newRedeem);
-        writeRedeemData(redeems);
+        // Insert directly into PostgreSQL withdrawals table
+        const insertQuery = `
+            INSERT INTO withdrawals (user_id, wallet, amount, fee, total_deduct, type, status, date)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING id, user_id AS "userId", wallet, amount, fee, total_deduct AS "totalDeduct", type, status, date
+        `;
+
+        const result = await pool.query(insertQuery, [
+            String(userId).trim(),
+            String(wallet).trim(),
+            numericAmount,
+            fee,
+            totalDeduct,
+            redeemType,
+            status
+        ]);
 
         return res.status(200).json({
             success: true,
             message: "✅ Withdrawal Request Submitted Successfully!",
-            redeem: newRedeem
+            redeem: result.rows[0]
         });
 
     } catch (error) {
-        console.error("Redeem Route Error:", error);
+        console.error("Redeem PostgreSQL Route Error:", error);
         return res.status(500).json({
             success: false,
             message: "Internal Server Error"
+        });
+    }
+});
+
+// GET /api/redeem/user/:userId (User History Sync)
+router.get("/user/:userId", async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const result = await pool.query(`
+            SELECT id, user_id AS "userId", wallet, amount, fee, total_deduct AS "totalDeduct", type, status, date
+            FROM withdrawals
+            WHERE user_id = $1
+            ORDER BY date DESC
+        `, [userId]);
+
+        return res.status(200).json({
+            success: true,
+            history: result.rows
+        });
+    } catch (error) {
+        console.error("Fetch User History Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Server Error"
         });
     }
 });
