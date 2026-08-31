@@ -11,6 +11,8 @@ const adRoute = require("./routes/ad");
 const rewardRoute = require("./routes/reward");
 const redeemRoute = require("./routes/redeem");
 const adminRoute = require("./routes/admin");
+// 1. Leaderboard Route Import Kiya
+const leaderboardRoute = require("./routes/leaderboard");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,6 +29,8 @@ app.use("/api/ad", adRoute);
 app.use("/api/reward", rewardRoute);
 app.use("/api/redeem", redeemRoute);
 app.use("/api/admin", adminRoute);
+// 2. Leaderboard API Register Ki
+app.use("/api/leaderboard", leaderboardRoute);
 
 // Frontend Folder
 app.use(express.static(path.join(__dirname, "../www")));
@@ -47,8 +51,6 @@ const adLogsFile = path.join(__dirname, "data", "ad_logs.json");
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "../www/index.html"));
 });
-
-
 
 // ==========================
 // Start Server
